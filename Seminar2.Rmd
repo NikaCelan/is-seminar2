@@ -1,0 +1,150 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+# 1 Exploration
+
+```{r}
+test <- read.table(file="test.csv", sep=",", header=TRUE) 
+train <- read.table(file="train.csv", sep=",", header=TRUE)
+dataset = rbind(test, train)
+
+```
+
+**Target feature is biodegradability.**
+
+**The target variable is encoded as ready biodegradable (1) and not ready biodegradable (2)**
+
+```{r}
+summary(dataset)
+dataset
+```
+
+**How balanced is the target variable?**
+
+Mean of target variable is 1.337 that is how we know there are more not ready biodegradable chemicals in our training dataset than ready biodegradable chemicals.
+
+```{r}
+table(dataset$Class)
+table(test$Class)
+table(train$Class)
+```
+
+```{r}
+table_class <- (table(dataset$Class)) 
+piepercent <- paste(round(100*table_class/sum(table_class), 2), "%") 
+names(table_class) <- c("ready biodegradable", "not ready biodegradable") 
+labels <- paste(names(table_class), piepercent) 
+pie(table_class, labels = labels, main = "target variable", col=c("pink", "lightblue1")) 
+#legend("topright", legend = piepercent, cex = 0.6, fill=c("pink", "lightblue1"))
+```
+
+**Are there any missing values present? If there are, choose a strategy that takes this into account.**
+
+```{r}
+is.na(dataset)
+
+dataset[!complete.cases(dataset),] 
+# 81/1055
+
+#remove instances where one of values is missing 
+train <- na.omit(train)
+test <- na.omit(test)
+dataset <- na.omit(dataset)
+dataset
+```
+
+```{r}
+table_class <- (table(dataset$Class)) 
+piepercent <- paste(round(100*table_class/sum(table_class), 2), "%") 
+names(table_class) <- c("ready biodegradable", "not ready biodegradable") 
+labels <- paste(names(table_class), piepercent) 
+pie(table_class, labels = labels, main = "target variable (without instances with missing values)", col=c("pink", "lightblue1")) 
+
+```
+
+**Most of your data is of the numeric type. Can you identify, by adopting exploratory analysis, whether some features are directly related to the target? What about feature pairs?**
+
+
+```{r}
+
+target_corr = abs(cor(dataset[,names(dataset)])[names(dataset)[42],])
+target_corr
+
+#the most correlated features
+#V1- 0.395
+#V27-0.392
+#V22-0.364
+#V39-0.362
+#V15-0.343
+#V13-0.342
+#V7- 0.332
+#V33-0.315
+
+
+```
+
+TODO for pairs
+
+**Produce at least three types of visualizations of the feature space and be prepared to argue why these visualizations were useful for your subsequent analysis.**
+
+
+
+# 2 Modeling
+
+***majority classifier***
+
+```{r}
+majority.class <- names(which.max(table(train$Class)))
+majority.class
+```
+
+Accuracy of majority classifier:
+
+```{r}
+sum(test$Class == majority.class) / length(test$Class)
+```
+
+We want to achieve better accuracy than majority classifier.
+
+```{r}
+#function for classification accuracy
+
+CA <- function(observed, predicted)
+{
+  t <- table(observed, predicted)
+  
+  sum(diag(t)) / sum(t)
+}
+```
+
+***random classifier***
+
+TODO
+
+***decision tree***
+
+```{r}
+# . pomeni da pogledamo za vse atribute
+library(rpart)
+?rpart
+dt <- rpart(Class ~ ., data = test, method = "class")
+plot(dt)
+text(dt, pretty = 1)
+```
+
+```{r}
+observed <- test$Class
+predicted <- predict(dt, test, type = "class")
+
+confusion_matrix <- table(observed, predicted)
+confusion_matrix
+
+CA(observed, predicted)
+```
+
+Decstion tree classifies better than majority classifier
+
+
