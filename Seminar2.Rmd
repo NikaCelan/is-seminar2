@@ -9,7 +9,6 @@ editor_options:
 ```{r}
 test <- read.table(file="test.csv", sep=",", header=TRUE) 
 train <- read.table(file="train.csv", sep=",", header=TRUE)
-dataset = rbind(test, train)
 
 ```
 
@@ -18,8 +17,8 @@ dataset = rbind(test, train)
 **The target variable is encoded as ready biodegradable (1) and not ready biodegradable (2)**
 
 ```{r}
-summary(dataset)
-dataset
+summary(test)
+test
 ```
 
 **How balanced is the target variable?**
@@ -27,13 +26,11 @@ dataset
 Mean of target variable is 1.337 that is how we know there are more not ready biodegradable chemicals in our training dataset than ready biodegradable chemicals.
 
 ```{r}
-table(dataset$Class)
-table(test$Class)
 table(train$Class)
 ```
 
 ```{r}
-table_class <- (table(dataset$Class)) 
+table_class <- (table(train$Class)) 
 piepercent <- paste(round(100*table_class/sum(table_class), 2), "%") 
 names(table_class) <- c("ready biodegradable", "not ready biodegradable") 
 labels <- paste(names(table_class), piepercent) 
@@ -44,20 +41,18 @@ pie(table_class, labels = labels, main = "target variable", col=c("pink", "light
 **Are there any missing values present? If there are, choose a strategy that takes this into account.**
 
 ```{r}
-is.na(dataset)
+is.na(train)
 
-dataset[!complete.cases(dataset),] 
+dataset[!complete.cases(train),] 
 # 81/1055
 
 #remove instances where one of values is missing 
 train <- na.omit(train)
-test <- na.omit(test)
-dataset <- na.omit(dataset)
-dataset
+#test <- na.omit(test)
 ```
 
 ```{r}
-table_class <- (table(dataset$Class)) 
+table_class <- (table(train$Class)) 
 piepercent <- paste(round(100*table_class/sum(table_class), 2), "%") 
 names(table_class) <- c("ready biodegradable", "not ready biodegradable") 
 labels <- paste(names(table_class), piepercent) 
@@ -69,7 +64,7 @@ pie(table_class, labels = labels, main = "target variable (without instances wit
 
 ```{r}
 
-target_corr = abs(cor(dataset[,names(dataset)])[names(dataset)[42],])
+target_corr = abs(cor(train[,names(train)])[names(train)[42],])
 target_corr <- sort(target_corr, decreasing = TRUE)
 target_corr_top8 <- target_corr[2: 9]
 
@@ -87,9 +82,8 @@ plot(target_corr_top8, xlab="features", ylab = "correlation", main="features wit
 axis(1, at = c(1,2,3,4,5,6,7,8), labels = names(target_corr_top8))
 ```
 
-
 ```{r}
-correlation_matrix <- cor(dataset)
+correlation_matrix <- cor(train)
 correlation_matrix
 
 library(corrplot)
@@ -97,10 +91,11 @@ corrplot(correlation_matrix, method = 'color')
 
 
 ```
+
 ```{r}
 #subset
 features = c("V1", "V5", "V7", "V10", "V11", "V13", "V15", "V17", "V18", "V22", "V24", "V27", "V33", "V36", "V38", "V39", "Class")
-subset = dataset[features]
+subset = train[features]
 print(subset)
 correlation_matrix_small <- cor(subset)
 corrplot(correlation_matrix_small, method = 'color')
@@ -110,7 +105,7 @@ corrplot(correlation_matrix_small, method = 'color')
 ```{r}
 
 linearReg <- lm(V15 ~ V1, data = dataset)
-plot(V15 ~ V1, data = dataset)
+plot(V15 ~ V1, data = train)
 abline(linearReg)
 
 ```
@@ -122,6 +117,7 @@ abline(linearReg)
 ***majority classifier***
 
 ```{r}
+
 majority.class <- names(which.max(table(train$Class)))
 majority.class
 ```
@@ -129,7 +125,7 @@ majority.class
 Accuracy of majority classifier:
 
 ```{r}
-sum(test$Class == majority.class) / length(test$Class)
+sum(train$Class == majority.class) / length(train$Class)
 ```
 
 We want to achieve better accuracy than majority classifier.
@@ -154,12 +150,15 @@ TODO
 ```{r}
 # . pomeni da pogledamo za vse atribute
 library(rpart)
-decision_tree <- rpart(Class ~ ., data = test, method = "class")
+decision_tree <- rpart(Class ~ ., data = train, method = "class")
 plot(decision_tree)
 text(decision_tree, pretty = 1)
 ```
 
 ```{r}
+
+##########!!!is made with test!!!#######
+
 observed <- test$Class
 predicted <- predict(decision_tree, test, type = "class")
 
@@ -168,6 +167,7 @@ confusion_matrix
 
 CA(observed, predicted)
 ```
+
 ```{r}
 library(caret)
 importance <- varImp(decision_tree, scale=FALSE)
@@ -188,8 +188,9 @@ print(importance)
 
 ```
 
-Decision tree classifies better than majority classifier
+Decision tree classifies better than majority classifier 
 ***decision tree with subset***
+
 ```{r}
 
 features
@@ -207,7 +208,8 @@ confusion_matrix
 
 CA(observed, predicted)
 ```
-Accuracy with choosen subset is the same as it was before (with all features)
+
+Accuracy with chosen subset is the same as it was before (with all features)
 
 ***KNN***
 
@@ -235,8 +237,6 @@ for (x in 1:20) {
     evalCore[[j]] <- modelEval(model_knn, correctClass = dTest$Class, predictedClass = predCore$class,   
                                  predictedProb=predCore$prob)
     
-    #evalCore[[j]] <- modelEval(modelCore, correctClass = dTest$Class, predictedClass = predCore$class, 
-    #                            predictedProb=predCore$prob )
     destroyModels(model_knn)
   }
   
@@ -247,30 +247,20 @@ for (x in 1:20) {
 
 bestK <- which.max(overallScores)
 
-cm.knn <- CoreModel(Class ~ ., data = train, model="knn", kInNN = bestK)
+bestKNN <- CoreModel(Class ~ ., data = train, model="knn", kInNN = bestK)
 
-predicted_knn <- predict(cm.knn, test, type="class")
-  
-accuracy = CA(observed, predicted_knn)
-accuracy
+#overallScores[bestK]
 
-qplot(1:20, overallScores, xlab = "k", ylab = "Porvormance(acc)", geom = c("point","line"))
+#
+#predicted_knn <- predict(cm.knn, test, type="class")
+#  
+#accuracy = CA(observed, predicted_knn)
+#accuracy
+
+qplot(1:20, overallScores, xlab = "k", ylab = "Performance(acc)", geom = c("point","line"))
 
 #bestK:    9
-#accuracy: 0.8421053
-
-#8  -> 0.8277512
-#9  -> 0.8421053
-#10 -> 0.8229665
-#15 -> 0.8086124
-#17 -> 0.8229665
-#20 -> 0.8133971
+#accuracy: 0.8413043
 
 
 ```
-
-
-
-
-
-
