@@ -154,7 +154,6 @@ TODO
 ```{r}
 # . pomeni da pogledamo za vse atribute
 library(rpart)
-?rpart
 decision_tree <- rpart(Class ~ ., data = test, method = "class")
 plot(decision_tree)
 text(decision_tree, pretty = 1)
@@ -213,28 +212,59 @@ Accuracy with choosen subset is the same as it was before (with all features)
 ***KNN***
 
 ```{r}
-library(CORElearn)
 
-knn_n <- c(3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20)
-results <- c()
-for (x in nekaj) {
-  cm.knn <- CoreModel(Class ~ ., data = train, model="knn", kInNN = x)
+library(CORElearn)
+library(ggplot2)
+
+foldIdx <- cvGen(nrow(train), k=3)
+evalCore<-list()
+overallScores <- c()
+
+for (x in 1:20) {
   
-  predicted_knn <- predict(cm.knn, test, type="class")
+  for (j in 1:3){
+    dTrain <- test[foldIdx!=j,]
+    dTest  <- test[foldIdx==j,]
+    dTest <- na.omit(dTest)
+    dTrain <- na.omit(dTrain)
+    model_knn <- CoreModel(Class ~ ., data = train, model="knn", kInNN = x)
+    
+    predCore <- predict(model_knn, dTest)
   
-  accuracy = CA(observed, predicted_knn)
-  results[x] = accuracy
-  print(accuracy)
+    
+    evalCore[[j]] <- modelEval(model_knn, correctClass = dTest$Class, predictedClass = predCore$class,   
+                                 predictedProb=predCore$prob)
+    
+    #evalCore[[j]] <- modelEval(modelCore, correctClass = dTest$Class, predictedClass = predCore$class, 
+    #                            predictedProb=predCore$prob )
+    destroyModels(model_knn)
+  }
+  
+  results <- gatherFromList(evalCore)
+  meanPerformances <- sapply(results, mean)
+  overallScores <- c(overallScores, meanPerformances["accuracy"])
 }
 
-results
+bestK <- which.max(overallScores)
 
-#8  -> 8277512
-#9  -> 8421053
-#10 -> 8229665
-#15 -> 8086124
-#17 -> 8229665
-#20 -> 8133971
+cm.knn <- CoreModel(Class ~ ., data = train, model="knn", kInNN = bestK)
+
+predicted_knn <- predict(cm.knn, test, type="class")
+  
+accuracy = CA(observed, predicted_knn)
+accuracy
+
+qplot(1:20, overallScores, xlab = "k", ylab = "Porvormance(acc)", geom = c("point","line"))
+
+#bestK:    9
+#accuracy: 0.8421053
+
+#8  -> 0.8277512
+#9  -> 0.8421053
+#10 -> 0.8229665
+#15 -> 0.8086124
+#17 -> 0.8229665
+#20 -> 0.8133971
 
 
 ```
