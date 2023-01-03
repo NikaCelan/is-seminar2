@@ -67,11 +67,11 @@ pie(table_class, labels = labels, main = "target variable (without instances wit
 
 **Most of your data is of the numeric type. Can you identify, by adopting exploratory analysis, whether some features are directly related to the target? What about feature pairs?**
 
-
 ```{r}
 
 target_corr = abs(cor(dataset[,names(dataset)])[names(dataset)[42],])
-target_corr
+target_corr <- sort(target_corr, decreasing = TRUE)
+target_corr_top8 <- target_corr[2: 9]
 
 #the most correlated features
 #V1- 0.395
@@ -83,14 +83,39 @@ target_corr
 #V7- 0.332
 #V33-0.315
 
+plot(target_corr_top8, xlab="features", ylab = "correlation", main="features with biggest correalton to the target", xaxt = "n")
+axis(1, at = c(1,2,3,4,5,6,7,8), labels = names(target_corr_top8))
+```
+
+
+```{r}
+correlation_matrix <- cor(dataset)
+correlation_matrix
+
+library(corrplot)
+corrplot(correlation_matrix, method = 'color')
+
+
+```
+```{r}
+#subset
+features = c("V1", "V5", "V7", "V10", "V11", "V13", "V15", "V17", "V18", "V22", "V24", "V27", "V33", "V36", "V38", "V39", "Class")
+subset = dataset[features]
+print(subset)
+correlation_matrix_small <- cor(subset)
+corrplot(correlation_matrix_small, method = 'color')
 
 ```
 
-TODO for pairs
+```{r}
+
+linearReg <- lm(V15 ~ V1, data = dataset)
+plot(V15 ~ V1, data = dataset)
+abline(linearReg)
+
+```
 
 **Produce at least three types of visualizations of the feature space and be prepared to argue why these visualizations were useful for your subsequent analysis.**
-
-
 
 # 2 Modeling
 
@@ -130,21 +155,92 @@ TODO
 # . pomeni da pogledamo za vse atribute
 library(rpart)
 ?rpart
-dt <- rpart(Class ~ ., data = test, method = "class")
-plot(dt)
-text(dt, pretty = 1)
+decision_tree <- rpart(Class ~ ., data = test, method = "class")
+plot(decision_tree)
+text(decision_tree, pretty = 1)
 ```
 
 ```{r}
 observed <- test$Class
-predicted <- predict(dt, test, type = "class")
+predicted <- predict(decision_tree, test, type = "class")
 
 confusion_matrix <- table(observed, predicted)
 confusion_matrix
 
 CA(observed, predicted)
 ```
+```{r}
+library(caret)
+importance <- varImp(decision_tree, scale=FALSE)
+importance_sorted <- sort(t(importance), decreasing = TRUE, index.return = TRUE)
+print(t(importance))
+importance_sorted
+# summarize importance
+print(importance)
 
-Decstion tree classifies better than majority classifier
+#V15
+#V1
+#V17
+#V10
+#V12
+#V13
+#V11
+#V16
+
+```
+
+Decision tree classifies better than majority classifier
+***decision tree with subset***
+```{r}
+
+features
+subset_of_test = test[features]
+
+decision_tree_sub <- rpart(Class ~ ., data = subset_of_test, method = "class")
+plot(decision_tree_sub)
+text(decision_tree_sub, pretty = 1)
+
+observed <- test$Class
+predicted <- predict(decision_tree_sub, test, type = "class")
+
+confusion_matrix <- table(observed, predicted)
+confusion_matrix
+
+CA(observed, predicted)
+```
+Accuracy with choosen subset is the same as it was before (with all features)
+
+***KNN***
+
+```{r}
+library(CORElearn)
+
+knn_n <- c(3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20)
+results <- c()
+for (x in nekaj) {
+  cm.knn <- CoreModel(Class ~ ., data = train, model="knn", kInNN = x)
+  
+  predicted_knn <- predict(cm.knn, test, type="class")
+  
+  accuracy = CA(observed, predicted_knn)
+  results[x] = accuracy
+  print(accuracy)
+}
+
+results
+
+#8  -> 8277512
+#9  -> 8421053
+#10 -> 8229665
+#15 -> 8086124
+#17 -> 8229665
+#20 -> 8133971
+
+
+```
+
+
+
+
 
 
