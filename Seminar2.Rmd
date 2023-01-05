@@ -10,6 +10,8 @@ editor_options:
 test <- read.table(file="test.csv", sep=",", header=TRUE) 
 train <- read.table(file="train.csv", sep=",", header=TRUE)
 
+set.seed(100)
+
 ```
 
 **Target feature is biodegradability.**
@@ -43,21 +45,12 @@ pie(table_class, labels = labels, main = "target variable", col=c("pink", "light
 ```{r}
 is.na(train)
 
-dataset[!complete.cases(train),] 
+train[!complete.cases(train),] 
 # 81/1055
 
 #remove instances where one of values is missing 
 train <- na.omit(train)
 #test <- na.omit(test)
-```
-
-```{r}
-table_class <- (table(train$Class)) 
-piepercent <- paste(round(100*table_class/sum(table_class), 2), "%") 
-names(table_class) <- c("ready biodegradable", "not ready biodegradable") 
-labels <- paste(names(table_class), piepercent) 
-pie(table_class, labels = labels, main = "target variable (without instances with missing values)", col=c("pink", "lightblue1")) 
-
 ```
 
 **Most of your data is of the numeric type. Can you identify, by adopting exploratory analysis, whether some features are directly related to the target? What about feature pairs?**
@@ -83,6 +76,18 @@ axis(1, at = c(1,2,3,4,5,6,7,8), labels = names(target_corr_top8))
 ```
 
 ```{r}
+##distribution##
+#Za V1#
+train_twos = train[train$Class == 2,]
+train_ones = train[train$Class == 1,]
+
+plot(train_ones$V1, xlab="", ylab = "", main="", xaxt = "n", col='red')
+points(train_twos$V1, xlab="", ylab = "", main="", xaxt = "n", col='blue')
+
+```
+
+
+```{r}
 correlation_matrix <- cor(train)
 correlation_matrix
 
@@ -96,29 +101,44 @@ corrplot(correlation_matrix, method = 'color')
 #subset
 features = c("V1", "V5", "V7", "V10", "V11", "V13", "V15", "V17", "V18", "V22", "V24", "V27", "V33", "V36", "V38", "V39", "Class")
 subset = train[features]
-print(subset)
 correlation_matrix_small <- cor(subset)
 corrplot(correlation_matrix_small, method = 'color')
 
 ```
+```{r}
+pairs(train[c("V1", "V27", "V39", "V12", "V13", "Class")], pch=19, col=c(2, 3))
+```
 
 ```{r}
-
-linearReg <- lm(V15 ~ V1, data = dataset)
+library(MASS)
+library(ROCR)
+linearReg <- lm(V15 ~ V1, data = train)
 plot(V15 ~ V1, data = train)
 abline(linearReg)
-
+linear <- lda(Class~., train)
 ```
 
 **Produce at least three types of visualizations of the feature space and be prepared to argue why these visualizations were useful for your subsequent analysis.**
 
 # 2 Modeling
+First lets split out test set in two sets we will actually use for determening accuracy
+
+```{r}
+library(caret)
+## Split the data so that we use 70% of it for training
+train_index <- createDataPartition(y=train$Class, p=0.7, list=FALSE)
+
+## Subset the data
+train_set <- train[train_index, ]
+test_set <- train[-train_index, ]
+```
+
 
 ***majority classifier***
 
 ```{r}
 
-majority.class <- names(which.max(table(train$Class)))
+majority.class <- names(which.max(table(train_set$Class)))
 majority.class
 ```
 
@@ -148,11 +168,11 @@ TODO
 ***decision tree***
 
 ```{r}
-# . pomeni da pogledamo za vse atribute
 library(rpart)
 decision_tree <- rpart(Class ~ ., data = train, method = "class")
 plot(decision_tree)
 text(decision_tree, pretty = 1)
+train.dt <- decision_tree
 ```
 
 ```{r}
@@ -171,30 +191,22 @@ CA(observed, predicted)
 ```{r}
 library(caret)
 importance <- varImp(decision_tree, scale=FALSE)
-importance_sorted <- sort(t(importance), decreasing = TRUE, index.return = TRUE)
-print(t(importance))
+importance
+importance_sorted <- arrange(importance, desc(Overall))
 importance_sorted
-# summarize importance
-print(importance)
 
-#V15
-#V1
-#V17
-#V10
-#V12
-#V13
-#V11
-#V16
 
 ```
 
 Decision tree classifies better than majority classifier 
-***decision tree with subset***
+***decision tree with subset of 17 important features***
 
 ```{r}
 
 features
 subset_of_test = test[features]
+
+length(features)
 
 decision_tree_sub <- rpart(Class ~ ., data = subset_of_test, method = "class")
 plot(decision_tree_sub)
@@ -208,59 +220,105 @@ confusion_matrix
 
 CA(observed, predicted)
 ```
-
 Accuracy with chosen subset is the same as it was before (with all features)
+
+***Random forest***
+
+```{r}
+set.seed(100)
+library(randomForest)
+train$Class <- as.factor(train$Class)
+train.rf <- randomForest(Class ~ ., data = train, trControl=trainControl(method='repeatedcv', number=10, repeats=5, 
+                            search = "grid"), metric='Accuracy', ntree = 800, ntry = 30)
+train.rf
+predicted <- predict(train.rf, test, type="class")
+CA(observed, predicted)
+
+```
+
+
+```{r}
+library(dplyr)
+var_imp <- varImp(train.rf)
+var_imp <- data.frame(variables=row.names(var_imp), importance=var_imp$Overall)
+
+## Create a plot of variable importance
+var_imp %>%
+        
+        ## Sort the data by importance
+        arrange(importance) %>%
+        
+        ## Create a ggplot object for aesthetic
+        ggplot(aes(x=reorder(variables, importance), y=importance)) + 
+        
+        ## Plot the bar graph
+        geom_bar(stat='identity') + 
+        
+        ## Flip the graph to make a horizontal bar plot
+        coord_flip() + 
+        
+        ## Add x-axis label
+        xlab('Variables') +
+        
+        ## Add a title
+        labs(title='Random forest variable importance') + 
+        
+        ## Some layout for the plot
+        theme_minimal()
+```
+```{r}
+feature_importance_sorted <- arrange(var_imp, desc(importance))
+feature_top_5 = feature_import_sorted[1:5,1]
+feature_top_5[6] = "Class"
+
+set.seed(100)
+library(randomForest)
+train.rf <- randomForest(Class ~ ., data = train[feature_top_5], trControl=trainControl(method='repeatedcv', number=10, repeats=5, 
+                            search = "grid"), metric='Accuracy')
+train.rf
+predicted <- predict(train.rf, test, type="class")
+CA(observed, predicted)
+
+```
+
 
 ***KNN***
 
-```{r}
 
+```{r}
+library(caret)
 library(CORElearn)
 library(ggplot2)
 
-foldIdx <- cvGen(nrow(train), k=3)
-evalCore<-list()
-overallScores <- c()
 
-for (x in 1:20) {
-  
-  for (j in 1:3){
-    dTrain <- test[foldIdx!=j,]
-    dTest  <- test[foldIdx==j,]
-    dTest <- na.omit(dTest)
-    dTrain <- na.omit(dTrain)
-    model_knn <- CoreModel(Class ~ ., data = train, model="knn", kInNN = x)
-    
-    predCore <- predict(model_knn, dTest)
-  
-    
-    evalCore[[j]] <- modelEval(model_knn, correctClass = dTest$Class, predictedClass = predCore$class,   
-                                 predictedProb=predCore$prob)
-    
-    destroyModels(model_knn)
-  }
-  
-  results <- gatherFromList(evalCore)
-  meanPerformances <- sapply(results, mean)
-  overallScores <- c(overallScores, meanPerformances["accuracy"])
-}
+train$Class = factor(train$Class)
 
-bestK <- which.max(overallScores)
+grid = expand.grid(k = c(1:20))
 
-bestKNN <- CoreModel(Class ~ ., data = train, model="knn", kInNN = bestK)
+knn_model = train(Class ~., method= "knn", data = train, 
+                    trControl = trainControl(method = "repeatedcv", number = 10, repeats = 3, search = "grid"),
+                     tuneGrid = grid, preProcess = c("scale", "center"))
 
-#overallScores[bestK]
+knn_model
+best_k = which.max(knn_model$results$Accuracy)
 
-#
-#predicted_knn <- predict(cm.knn, test, type="class")
-#  
-#accuracy = CA(observed, predicted_knn)
-#accuracy
+qplot(1:20, knn_model$results$Accuracy, xlab = "k", ylab = "Performance(acc)", geom = c("point","line"))
 
-qplot(1:20, overallScores, xlab = "k", ylab = "Performance(acc)", geom = c("point","line"))
+train.knn <- knn_model
 
-#bestK:    9
-#accuracy: 0.8413043
+```
 
+On the graph we can see the best K for KNN in interval 1-20 is 5
+
+```{r}
+### Made with test !!!! ###
+
+train.lda <- lda(Class~., train)
+train.lda.values <- predict(train.lda, train)
+ldahist(train.lda.values$x[,1], g=train$Class)
+
+train.lda.acc <- CA(test$Class, predict(train.lda, test)$class)
+
+train.lda.conf <- table(test$Class, predict(train.lda, test)$class)
 
 ```
