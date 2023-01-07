@@ -106,7 +106,7 @@ print(subset)
 correlation_matrix_small <- cor(subset)
 corrplot(correlation_matrix_small, method = 'color')
 colors = c("#00AFBB", "#E7B800")
-pairs(dataset[c("V1", "V27", "V39", "V12", "V13", "CLASS")], pch=19, col=colors[dataset$Class])
+pairs(dataset[c("V1", "V27", "V39", "V12", "V13", "Class")], pch=19, col=colors[dataset$Class])
 ```
 
 ```{r}

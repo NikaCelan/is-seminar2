@@ -75,16 +75,6 @@ plot(target_corr_top8, xlab="features", ylab = "correlation", main="features wit
 axis(1, at = c(1,2,3,4,5,6,7,8), labels = names(target_corr_top8))
 ```
 
-```{r}
-##distribution##
-#Za V1#
-train_twos = train[train$Class == 2,]
-train_ones = train[train$Class == 1,]
-
-plot(train_ones$V1, xlab="", ylab = "", main="", xaxt = "n", col='red')
-points(train_twos$V1, xlab="", ylab = "", main="", xaxt = "n", col='blue')
-
-```
 
 
 ```{r}
@@ -99,12 +89,13 @@ corrplot(correlation_matrix, method = 'color')
 
 ```{r}
 #subset
-features = c("V1", "V5", "V7", "V10", "V11", "V13", "V15", "V17", "V18", "V22", "V24", "V27", "V33", "V36", "V38", "V39", "Class")
+features = c("V1", "V5", "V7", "V10", "V11", "V13", "V15", "V17", "V18", "V22", "V24", "V27", "V33","V34", "V36", "V38", "V39", "Class")
 subset = train[features]
 correlation_matrix_small <- cor(subset)
 corrplot(correlation_matrix_small, method = 'color')
 
 ```
+
 ```{r}
 pairs(train[c("V1", "V27", "V39", "V12", "V13", "Class")], pch=19, col=c(2, 3))
 ```
@@ -121,6 +112,26 @@ linear <- lda(Class~., train)
 **Produce at least three types of visualizations of the feature space and be prepared to argue why these visualizations were useful for your subsequent analysis.**
 
 # 2 Modeling
+
+
+**Try to construct new features from existing ones.**
+
+We looked at attribute information and saw 3 attributes that looked similar:
+
+V5:  F04[C-N]: Frequency of C-N at topological distance 4
+V11: F03[C-N]: Frequency of C-N at topological distance 3
+V34: F02[C-N]: Frequency of C-N at topological distance 2
+
+
+We decided to add a new feature that combines these three features and we added the sum of V5, V11 and V34.
+
+```{r}
+library(dplyr)
+train <- train %>% mutate(V42 = V5 + V11 + V34)
+test <- test %>% mutate(V42 = V5 + V11 + V34)
+```
+
+
 First lets split out test set in two sets we will actually use for determening accuracy
 
 ```{r}
@@ -198,8 +209,8 @@ importance_sorted
 
 ```
 
-Decision tree classifies better than majority classifier 
-***decision tree with subset of 17 important features***
+
+***decision tree with subset of 17 the most important features***
 
 ```{r}
 
@@ -267,20 +278,26 @@ var_imp %>%
         theme_minimal()
 ```
 ```{r}
-feature_importance_sorted <- arrange(var_imp, desc(importance))
-feature_top_5 = feature_import_sorted[1:5,1]
-feature_top_5[6] = "Class"
+acc <- c() 
 
-set.seed(100)
-library(randomForest)
-train.rf <- randomForest(Class ~ ., data = train[feature_top_5], trControl=trainControl(method='repeatedcv', number=10, repeats=5, 
-                            search = "grid"), metric='Accuracy')
-train.rf
-predicted <- predict(train.rf, test, type="class")
-CA(observed, predicted)
+for (i in 1:40){
 
-```
+  feature_importance_sorted <- arrange(var_imp, desc(importance))
+  feature_top = feature_importance_sorted[1:i,1]
+  feature_top[i+1] = "Class"
+  
+  library(randomForest)
+  set.seed(155)
+  train.rf_min <- randomForest(Class ~ ., data = train[feature_top], trControl=trainControl(method='repeatedcv', number=10, repeats=5, 
+                              search = "grid"), metric='Accuracy')
+  train.rf_min
+  predicted <- predict(train.rf_min, test, type="class")
+  acc[i] = CA(observed, predicted)
+} 
+max(acc)
+qplot(1:40, acc, xlab = "number of features", ylab = "Performance(acc)", geom = c("point","line"), main="random forest accuracy in relation to number of features")
 
+```  
 
 ***KNN***
 
