@@ -4,9 +4,23 @@ editor_options:
   chunk_output_type: inline
 ---
 
+```{r, warning=FALSE, message=FALSE}
+library(corrplot)
+library(dplyr)
+library(rpart)
+library(randomForest)
+library(caret)
+library(CORElearn)
+library(PreProcess)
+library(MASS)
+library(rattle)
+library(pROC)
+
+```
+
 # 1 Exploration
 
-```{r}
+```{r, echo=T}
 test <- read.table(file="test.csv", sep=",", header=TRUE) 
 train <- read.table(file="train.csv", sep=",", header=TRUE)
 
@@ -18,7 +32,7 @@ set.seed(100)
 
 **The target variable is encoded as ready biodegradable (1) and not ready biodegradable (2)**
 
-```{r}
+```{r, echo=T}
 summary(test)
 test
 ```
@@ -27,11 +41,11 @@ test
 
 Mean of target variable is 1.337 that is how we know there are more not ready biodegradable chemicals in our training dataset than ready biodegradable chemicals.
 
-```{r}
+```{r, echo=T}
 table(train$Class)
 ```
 
-```{r}
+```{r, echo=T}
 table_class <- (table(train$Class)) 
 piepercent <- paste(round(100*table_class/sum(table_class), 2), "%") 
 names(table_class) <- c("ready biodegradable", "not ready biodegradable") 
@@ -42,7 +56,7 @@ pie(table_class, labels = labels, main = "target variable", col=c("pink", "light
 
 **Are there any missing values present? If there are, choose a strategy that takes this into account.**
 
-```{r}
+```{r, echo=T}
 is.na(train)
 
 train[!complete.cases(train),] 
@@ -53,9 +67,17 @@ train <- na.omit(train)
 #test <- na.omit(test)
 ```
 
+**First we normalize our data**
+
+```{r, echo=T}
+process <- preProcess(train, method=c("range"))
+train <- predict(process, train)
+test <- predict(process, test)
+```
+
 **Most of your data is of the numeric type. Can you identify, by adopting exploratory analysis, whether some features are directly related to the target? What about feature pairs?**
 
-```{r}
+```{r, echo=T}
 
 target_corr = abs(cor(train[,names(train)])[names(train)[42],])
 target_corr <- sort(target_corr, decreasing = TRUE)
@@ -75,67 +97,72 @@ plot(target_corr_top8, xlab="features", ylab = "correlation", main="features wit
 axis(1, at = c(1,2,3,4,5,6,7,8), labels = names(target_corr_top8))
 ```
 
-
-
-```{r}
+```{r, echo=T}
 correlation_matrix <- cor(train)
-correlation_matrix
 
-library(corrplot)
 corrplot(correlation_matrix, method = 'color')
 
+highly_correlated <- findCorrelation(correlation_matrix, names=TRUE, cutoff=0.9)
 
 ```
 
-```{r}
-#subset
-features = c("V1", "V5", "V7", "V10", "V11", "V13", "V15", "V17", "V18", "V22", "V24", "V27", "V33","V34", "V36", "V38", "V39", "Class")
-subset = train[features]
-correlation_matrix_small <- cor(subset)
-corrplot(correlation_matrix_small, method = 'color')
+Scatter matrix
 
-```
-
-```{r}
+```{r, echo=T}
+colors = c("#00AFBB", "#E7B800")
 pairs(train[c("V1", "V27", "V39", "V12", "V13", "Class")], pch=19, col=c(2, 3))
 ```
 
-```{r}
-library(MASS)
-library(ROCR)
-linearReg <- lm(V15 ~ V1, data = train)
-plot(V15 ~ V1, data = train)
-abline(linearReg)
-linear <- lda(Class~., train)
+Distribution
+
+```{r, echo=T}
+p1 <- hist(train[train$Class == 0,]$V1) 
+p2 <- hist(train[train$Class == 1,]$V1)                     # centered at 4
+plot( p1, col=rgb(0,0,1,1/4), xlab = "V1", ylab = "Count", main="Distribucija")  # first histogram
+plot( p2, col=rgb(1,0,0,1/4), add=T)
+```
+
+**box plot for few features**
+
+```{r, echo=T}
+train1 = train[train$Class == 0,]
+train2 = train[train$Class == 1,]
+median1 <- apply(train1, 2, median)
+median2 <- apply(train2, 2, median)
+diff <- sort(abs(median1 - median2))
+print(diff)
+boxplot(V1 ~ Class, train)
 ```
 
 **Produce at least three types of visualizations of the feature space and be prepared to argue why these visualizations were useful for your subsequent analysis.**
 
 # 2 Modeling
 
+Make target variable non numeric
+
+```{r, echo=T}
+train$Class <- as.character(train$Class)
+train$Class <- as.factor(train$Class)
+```
 
 **Try to construct new features from existing ones.**
 
 We looked at attribute information and saw 3 attributes that looked similar:
 
-V5:  F04[C-N]: Frequency of C-N at topological distance 4
-V11: F03[C-N]: Frequency of C-N at topological distance 3
-V34: F02[C-N]: Frequency of C-N at topological distance 2
-
+V5: F04[C-N]: Frequency of C-N at topological distance 4 V11: F03[C-N]: Frequency of C-N at topological distance 3 V34: F02[C-N]: Frequency of C-N at topological distance 2
 
 We decided to add a new feature that combines these three features and we added the sum of V5, V11 and V34.
 
-```{r}
-library(dplyr)
+```{r, echo=T}
+
 train <- train %>% mutate(V42 = V5 + V11 + V34)
 test <- test %>% mutate(V42 = V5 + V11 + V34)
 ```
 
+First lets split out test set in two sets we will actually use for determining accuracy
 
-First lets split out test set in two sets we will actually use for determening accuracy
+```{r, echo=T}
 
-```{r}
-library(caret)
 ## Split the data so that we use 70% of it for training
 train_index <- createDataPartition(y=train$Class, p=0.7, list=FALSE)
 
@@ -144,54 +171,78 @@ train_set <- train[train_index, ]
 test_set <- train[-train_index, ]
 ```
 
+function for classification accuracy
 
-***majority classifier***
-
-```{r}
-
-majority.class <- names(which.max(table(train_set$Class)))
-majority.class
-```
-
-Accuracy of majority classifier:
-
-```{r}
-sum(train$Class == majority.class) / length(train$Class)
-```
-
-We want to achieve better accuracy than majority classifier.
-
-```{r}
-#function for classification accuracy
-
+```{r, echo=T}
+scores <- list()
 CA <- function(observed, predicted)
 {
   t <- table(observed, predicted)
   
   sum(diag(t)) / sum(t)
 }
+Sensitivity <- function(observed, predicted, pos.class)
+{
+  t <- table(observed, predicted)
+  
+  t[pos.class, pos.class] / sum(t[pos.class,])
+}
+
+# The specificity of a model
+Specificity <- function(observed, predicted, pos.class)
+{
+  t <- table(observed, predicted)
+  
+  # identify the negative class name
+  neg.class <- which(row.names(t) != pos.class)
+  
+  t[neg.class, neg.class] / sum(t[neg.class,])
+}
+scores.CA <- CA
+scores.Sensitivity <- Sensitivity
+scores.Specificity <- Specificity
 ```
+
+***majority classifier***
+
+```{r, echo=T}
+
+majority.class <- names(which.max(table(train$Class)))
+majority.class
+
+sum(train$Class == majority.class) / length(train$Class)
+```
+
+We want to achieve better accuracy than majority classifier.
 
 ***random classifier***
 
-TODO
+```{r, echo=T}
+# Generate random predictions with equal probability for each class
+predictions <- sample(c("0", "1"), size = nrow(train), replace = TRUE, prob = c(0.5, 0.5)) 
+# Calculate the accuracy of the random classifier 
+accuracy <- mean(predictions == train$Class)
+accuracy
+```
 
 ***decision tree***
 
-```{r}
-library(rpart)
-decision_tree <- rpart(Class ~ ., data = train, method = "class")
-plot(decision_tree)
-text(decision_tree, pretty = 1)
-train.dt <- decision_tree
+```{r, echo=T}
+train_control <- trainControl(method = "repeatedcv", number = 5, repeats=10)
+
+# Train the model using the train function and the tuneGrid argument
+train.dt <- train(Class ~ ., data = train, tuneLength = 50, 
+          method = "rpart", metric = "Accuracy", trControl = train_control)
+train.dt.roc <- roc(train$Class, predict(train.dt, train, type="prob")[,2])
+train.dt
+fancyRpartPlot(train.dt$finalModel)
+
+
 ```
 
-```{r}
-
-##########!!!is made with test!!!#######
-
+```{r, echo=T}
 observed <- test$Class
-predicted <- predict(decision_tree, test, type = "class")
+predicted <- predict(train.dt$finalModel, test, type = "class")
 
 confusion_matrix <- table(observed, predicted)
 confusion_matrix
@@ -199,66 +250,55 @@ confusion_matrix
 CA(observed, predicted)
 ```
 
-```{r}
-library(caret)
-importance <- varImp(decision_tree, scale=FALSE)
-importance
+```{r, echo=T}
+importance <- varImp(train.dt$finalModel, scale=FALSE)
 importance_sorted <- arrange(importance, desc(Overall))
 importance_sorted
 
-
 ```
 
+***decision tree with subset of 15 the most important features***
 
-***decision tree with subset of 17 the most important features***
+```{r, echo=T}
+top_features <- c(row.names(head(importance_sorted, 15)))
+top_features <- append(top_features, "Class")
+subset_of_train = train[top_features]
 
-```{r}
-
-features
-subset_of_test = test[features]
-
-length(features)
-
-decision_tree_sub <- rpart(Class ~ ., data = subset_of_test, method = "class")
-plot(decision_tree_sub)
-text(decision_tree_sub, pretty = 1)
+decision_tree_sub <- train(Class ~ ., data = subset_of_train, tuneLength = 50, 
+                      method = "rpart", metric = "Accuracy", trControl = train_control)
 
 observed <- test$Class
-predicted <- predict(decision_tree_sub, test, type = "class")
+predicted <- predict(decision_tree_sub$finalModel, test, type = "class")
 
 confusion_matrix <- table(observed, predicted)
 confusion_matrix
 
 CA(observed, predicted)
 ```
+
 Accuracy with chosen subset is the same as it was before (with all features)
 
 ***Random forest***
 
-```{r}
+```{r, echo=T}
 set.seed(100)
-library(randomForest)
-train$Class <- as.factor(train$Class)
-train.rf <- randomForest(Class ~ ., data = train, trControl=trainControl(method='repeatedcv', number=10, repeats=5, 
-                            search = "grid"), metric='Accuracy', ntree = 800, ntry = 30)
-train.rf
-predicted <- predict(train.rf, test, type="class")
-CA(observed, predicted)
+tuneGrid <- expand.grid(.mtry = c(sqrt(ncol(train))))
 
+trControl = trainControl(method='repeatedcv', number = 5, repeats = 10)
+train.rf <- train(Class ~ ., data = train,method="rf",trControl=trControl, 
+                  metric='Accuracy', tuneGrid=tuneGrid)
+train.rf.roc <- roc(train$Class, predict(train.rf, train, type="prob")[,2])
+train.rf
+predicted <- predict(train.rf, test)
+CA(observed, predicted)
 ```
 
-
-```{r}
+```{r, echo=T}
 library(dplyr)
 var_imp <- varImp(train.rf)
-var_imp <- data.frame(variables=row.names(var_imp), importance=var_imp$Overall)
-
 ## Create a plot of variable importance
 var_imp %>%
-        
-        ## Sort the data by importance
-        arrange(importance) %>%
-        
+
         ## Create a ggplot object for aesthetic
         ggplot(aes(x=reorder(variables, importance), y=importance)) + 
         
@@ -277,43 +317,18 @@ var_imp %>%
         ## Some layout for the plot
         theme_minimal()
 ```
-```{r}
-acc <- c() 
-
-for (i in 1:40){
-
-  feature_importance_sorted <- arrange(var_imp, desc(importance))
-  feature_top = feature_importance_sorted[1:i,1]
-  feature_top[i+1] = "Class"
-  
-  library(randomForest)
-  set.seed(155)
-  train.rf_min <- randomForest(Class ~ ., data = train[feature_top], trControl=trainControl(method='repeatedcv', number=10, repeats=5, 
-                              search = "grid"), metric='Accuracy')
-  train.rf_min
-  predicted <- predict(train.rf_min, test, type="class")
-  acc[i] = CA(observed, predicted)
-} 
-max(acc)
-qplot(1:40, acc, xlab = "number of features", ylab = "Performance(acc)", geom = c("point","line"), main="random forest accuracy in relation to number of features")
-
-```  
 
 ***KNN***
 
-
-```{r}
-library(caret)
-library(CORElearn)
-library(ggplot2)
-
+```{r, echo=T}
+knitr::opts_chunk$set(warning = FALSE) 
 
 train$Class = factor(train$Class)
 
 grid = expand.grid(k = c(1:20))
 
 knn_model = train(Class ~., method= "knn", data = train, 
-                    trControl = trainControl(method = "repeatedcv", number = 10, repeats = 3, search = "grid"),
+                    trControl = trainControl(method = "repeatedcv", number = 5, repeats = 10, search = "grid"),
                      tuneGrid = grid, preProcess = c("scale", "center"))
 
 knn_model
@@ -323,14 +338,18 @@ qplot(1:20, knn_model$results$Accuracy, xlab = "k", ylab = "Performance(acc)", g
 
 train.knn <- knn_model
 
+train.knn.roc <- roc(train$Class, predict(train.knn, train, type="prob")[,2])
+
+
 ```
 
 On the graph we can see the best K for KNN in interval 1-20 is 5
 
-```{r}
-### Made with test !!!! ###
+***LDA classifier***
 
+```{r, echo=T}
 train.lda <- lda(Class~., train)
+#train.lda.roc <- roc(train$Class, predict(train.lda, train, type="prob")[,2])
 train.lda.values <- predict(train.lda, train)
 ldahist(train.lda.values$x[,1], g=train$Class)
 
@@ -338,4 +357,28 @@ train.lda.acc <- CA(test$Class, predict(train.lda, test)$class)
 
 train.lda.conf <- table(test$Class, predict(train.lda, test)$class)
 
+train.lda.acc
+train.lda.conf
+```
+
+***XGBoost***
+
+```{r, echo = T}
+trctrl <- trainControl(method = "repeatedcv", number = 5, repeats = 10)
+tune_grid <-  expand.grid(max_depth = c(3, 5, 7), 
+                        nrounds = (1:10)*50,    # number of trees
+                        # default values below
+                        eta = 0.3,
+                        gamma = 0,
+                        subsample = 1,
+                        min_child_weight = 1,
+                        colsample_bytree = 0.6)
+
+rf_fit <- train(Class ~ V39 + V30 + V1 + V15 + V27 + V13 + V38 + V10 + V34 + V2 + V37 +  V22 , data = train, method = "xgbTree",
+                trControl=trctrl,
+                tuneGrid = tune_grid,
+                tuneLength = 10,
+                verbosity = 0)
+predicted <- predict(rf_fit, test)
+CA(observed, predicted)
 ```
